@@ -14,7 +14,18 @@ import android.util.Log;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
+    private static final String CSV_FORMAT = "%s,%s,%s,%s"; // Uhrzeit, Längengrad, Breitengrad, Höhe
+    private static final long THREAD_SLEEP = 2000;
     private static final double SEA_LEVEL_PRESSURE_HPA = 1013.25;
     private static final double ALTITUDE_CONSTANT = 44330.0;
     private static final double EXPONENT = 0.1903;
@@ -22,6 +33,61 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private SensorManager sensorManager;
     private Sensor pressureSensor;
     private LocationManager locationManager;
+    private boolean stopCSVShedular = false;
+    private Thread csvShedular = new Thread(() -> {
+        while(true){
+            String currentTime = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date());
+            String csvLine = String.format(CSV_FORMAT, currentTime, currentLongitude, currentLatitude, currentAltitude);
+
+            if(stopCSVShedular){
+                stopCSVShedular = false;
+                break;
+            }
+
+            File file = new File(getFilesDir(), "gps_data.csv");
+            boolean writeLine = true;
+
+            if(file.exists()){
+                try(BufferedReader reader = new BufferedReader(new FileReader(file))){
+                    String lastLine = null, line;
+                    while((line = reader.readLine()) != null){
+                        lastLine = line;
+                    }
+                    if(lastLine != null && lastLine.equals(csvLine.trim())){
+                        writeLine = false;
+                    }
+                } catch(IOException e){
+                    e.printStackTrace();
+                }
+            }
+
+            if(writeLine){
+                try(FileWriter fw = new FileWriter(file, true)){
+                    fw.write(csvLine + "\n");
+                } catch(IOException e){
+                    e.printStackTrace();
+                }
+            }
+
+            try{
+                Thread.sleep(THREAD_SLEEP);
+            } catch(InterruptedException e){
+                throw new RuntimeException(e);
+            }
+        }
+    });
+
+    private void clearCsv() {
+        File file = new File(getFilesDir(), "gps_data.csv");
+        if(file.exists()){
+            boolean deleted = file.delete();
+            if(deleted){
+                Log.d("CSV", "Datei gelöscht");
+            } else {
+                Log.d("CSV", "Datei konnte nicht gelöscht werden");
+            }
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,12 +108,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         } else {
             startLocationUpdates();
         }
+
+        //Write every new Line to CSV
+        csvShedular.start();
     }
     private void startLocationUpdates() {
         try {
             locationManager.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER,
-                    2000,
+                    THREAD_SLEEP,
                     10,
                     location -> {
                         currentLatitude = location.getLatitude();
@@ -67,4 +136,16 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        stopCSVShedular = true;
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        csvShedular.start();
+    }
 }
