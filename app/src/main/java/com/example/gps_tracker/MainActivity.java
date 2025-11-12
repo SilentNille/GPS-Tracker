@@ -1,18 +1,23 @@
 package com.example.gps_tracker;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
+import android.location.Location;
+import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
-import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.Button;
+import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+
+import com.example.gps_tracker.vorgeben.LatLng;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -23,151 +28,191 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-public class MainActivity extends AppCompatActivity implements SensorEventListener {
-    private static final String CSV_FORMAT = "%s,%s,%s,%s"; // Uhrzeit, Längengrad, Breitengrad, Höhe
-    private static final long THREAD_SLEEP = 2000;
-    private static final double SEA_LEVEL_PRESSURE_HPA = 1013.25;
-    private static final double ALTITUDE_CONSTANT = 44330.0;
-    private static final double EXPONENT = 0.1903;
-    private double currentLongitude, currentLatitude, currentAltitude;
-    private SensorManager sensorManager;
-    private Sensor pressureSensor;
+public class MainActivity extends AppCompatActivity implements LocationListener {
+    private GpsGraphView gpsGraphView;
+    private Button startPauseButton, clearButton, showCsvButton;
+    private TextView latitudeValue, longitudeValue, altitudeValue;
+
+    private boolean tracking = false;
     private LocationManager locationManager;
-    private boolean stopCSVShedular = false;
-    private boolean isRunning = false;
-    private Thread csvShedular = new Thread(() -> {
-        isRunning = true;
-        while(true){
-            String currentTime = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date());
-            String csvLine = String.format(CSV_FORMAT, currentTime, currentLongitude, currentLatitude, currentAltitude);
 
-            if(stopCSVShedular){
-                break;
-            }
+    private AlertDialog csvDialog;
+    private TextView csvDataTextView;
 
-            File file = new File(getFilesDir(), "gps_data.csv");
-            boolean writeLine = true;
-
-            if(file.exists()){
-                try(BufferedReader reader = new BufferedReader(new FileReader(file))){
-                    String lastLine = null, line;
-                    while((line = reader.readLine()) != null){
-                        lastLine = line;
-                    }
-                    if(lastLine != null && lastLine.equals(csvLine.trim())){
-                        writeLine = false;
-                    }
-                } catch(IOException e){
-                    e.printStackTrace();
-                }
-            }
-
-            if(writeLine){
-                try(FileWriter fw = new FileWriter(file, true)){
-                    fw.write(csvLine + "\n");
-                } catch(IOException e){
-                    e.printStackTrace();
-                }
-            }
-
-            try{
-                Thread.sleep(THREAD_SLEEP);
-            } catch(InterruptedException e){
-               e.printStackTrace();
-            }
-        }
-        isRunning = false;
-    });
-
-    private void clearCsv() {
-        File file = new File(getFilesDir(), "gps_data.csv");
-        if(file.exists()){
-            boolean deleted = file.delete();
-            if(deleted){
-                Log.d("CSV", "Datei gelöscht");
-            } else {
-                Log.d("CSV", "Datei konnte nicht gelöscht werden");
-            }
-        }
-    }
+    private static final String CSV_HEADER = "time,latitude,longitude,altitude";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        pressureSensor = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
-        if (pressureSensor == null) {
-            Log.d("SensorCheck", "Kein Drucksensor");
-        }
+        gpsGraphView = findViewById(R.id.gpsGraphView);
+        startPauseButton = findViewById(R.id.startPauseButton);
+        clearButton = findViewById(R.id.clearButton);
+        showCsvButton = findViewById(R.id.showCsvButton);
+        latitudeValue = findViewById(R.id.latitudeValue);
+        longitudeValue = findViewById(R.id.longitudeValue);
+        altitudeValue = findViewById(R.id.altitudeValue);
+
+        startPauseButton.setOnClickListener(v -> {
+            if (tracking) {
+                pauseTracking();
+            } else {
+                startTracking();
+            }
+        });
+
+        clearButton.setOnClickListener(v -> {
+            clearTrackingData();
+        });
+
+        showCsvButton.setOnClickListener(v -> {
+            showCsvDataDialog();
+        });
 
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
-        } else {
-            startLocationUpdates();
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+        }
+    }
+
+    private void startTracking() {
+        tracking = true;
+        startPauseButton.setText("Pause");
+        startLocationUpdates();
+    }
+
+    private void pauseTracking() {
+        tracking = false;
+        startPauseButton.setText("Start");
+        stopLocationUpdates();
+    }
+
+    private void clearTrackingData() {
+        gpsGraphView.clearTrack();
+        File file = new File(getFilesDir(), "gps_data.csv");
+        if (file.exists()) {
+            file.delete();
+        }
+        if (csvDialog != null && csvDialog.isShowing()) {
+            csvDataTextView.setText("No CSV data found.");
+        }
+    }
+
+    private void showCsvDataDialog() {
+        if (csvDialog == null) {
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle("CSV Data");
+
+            LayoutInflater inflater = getLayoutInflater();
+            View dialogView = inflater.inflate(R.layout.dialog_csv, null);
+            builder.setView(dialogView);
+            csvDataTextView = dialogView.findViewById(R.id.csvDataTextView);
+
+            builder.setPositiveButton("OK", (dialog, which) -> {
+                csvDialog.dismiss();
+            });
+            csvDialog = builder.create();
         }
 
-        //Write every new Line to CSV
-        csvShedular.start();
+        updateCsvDialog();
+        csvDialog.show();
     }
+
+    private void updateCsvDialog() {
+        File file = new File(getFilesDir(), "gps_data.csv");
+        StringBuilder csvData = new StringBuilder();
+        if (file.exists()) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    csvData.append(line).append("\n");
+                }
+            } catch (IOException e) {
+                csvData.append("Error reading CSV file.");
+            }
+        } else {
+            csvData.append("No CSV data found.");
+        }
+
+        if(csvDataTextView != null) {
+            csvDataTextView.setText(csvData.toString());
+        }
+    }
+
     private void startLocationUpdates() {
-        try {
-            locationManager.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER,
-                    THREAD_SLEEP,
-                    10,
-                    location -> {
-                        currentLatitude = location.getLatitude();
-                        currentLongitude = location.getLongitude();
-                    }
-            );
-        } catch (SecurityException e) {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 0, this);
+        }
+    }
+
+    private void stopLocationUpdates() {
+        locationManager.removeUpdates(this);
+    }
+
+    @Override
+    public void onLocationChanged(@NonNull Location location) {
+        double latitude = location.getLatitude();
+        double longitude = location.getLongitude();
+        latitudeValue.setText(String.format(Locale.getDefault(), "%.6f", latitude));
+        longitudeValue.setText(String.format(Locale.getDefault(), "%.6f", longitude));
+
+        if (location.hasAltitude()) {
+            double altitude = location.getAltitude();
+            altitudeValue.setText(String.format(Locale.getDefault(), "%.2f m", altitude));
+        } else {
+            altitudeValue.setText("N/A");
+        }
+
+        LatLng latLng = new LatLng(latitude, longitude);
+        gpsGraphView.addPoint(latLng);
+
+        String currentTime = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
+        String csvLine = String.format(Locale.getDefault(), "%s,%.6f,%.6f,%.2f ", currentTime, latitude, longitude, location.getAltitude());
+        writeToCsv(csvLine);
+
+        if (csvDialog != null && csvDialog.isShowing()) {
+            updateCsvDialog();
+        }
+    }
+
+    private void writeToCsv(String line) {
+        File file = new File(getFilesDir(), "gps_data.csv");
+        try (FileWriter fw = new FileWriter(file, true)) {
+            if (!file.exists() || file.length() == 0) {
+                fw.write(CSV_HEADER);
+            }
+            fw.write(line);
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     @Override
-    public void onSensorChanged(SensorEvent event) {
-        float pressure = event.values[0];
-        currentAltitude = ALTITUDE_CONSTANT * (1.0 - Math.pow(pressure / SEA_LEVEL_PRESSURE_HPA, EXPONENT));
+    public void onStatusChanged(String provider, int status, Bundle extras) {
     }
 
     @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+    public void onProviderEnabled(@NonNull String provider) {
+    }
 
     @Override
-    protected void onPause() {
-        super.onPause();
-        stopCSVShedular = true;
-        Log.d("CSV","Try to Stop the Shedular");
+    public void onProviderDisabled(@NonNull String provider) {
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        while(isRunning && stopCSVShedular){
-            try {
-                Thread.sleep(100);
-                Log.d("CSV","Waiting for old Shedular Thread to finish before resuming");
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        };
-
-        if(!isRunning) {
-            stopCSVShedular = false;
-            csvShedular.start();
+        if (tracking) {
+            startLocationUpdates();
         }
     }
 
     @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        stopCSVShedular = true;
-        clearCsv();
+    protected void onPause() {
+        super.onPause();
+        if (tracking) {
+            stopLocationUpdates();
+        }
     }
 }

@@ -1,0 +1,226 @@
+Ein kleines Zeichenprogramm für Android
+Oberflächen (Views) können in Android auf zwei verschiedene Weisen erzeugt werden. Die
+erste Möglichkeit ist die Verwendung von xml-Ressourcen. Diese enthalten für jedes
+Steuerelement (Widget) ein entsprechendes Tag mit zugehörigen Attributen.
+Eine weitere Möglichkeit ist die Programmierung der Ansichten mit der View-Klasse. Dies
+hat den Vorteil, dass Oberflächen auch dynamisch gezeichnet werden können, z.B. bei einem
+einfachen Malprogramm. Hierzu wird eine eigene Klasse von View abgeleitet:
+public class SingleTouchEventView extends View
+In der View-Klasse kann das onDraw-Event überschrieben werden. Dieses wird aufgerufen,
+wenn die Oberfläche neu gezeichnet werden soll:
+ @Override
+ protected void onDraw(Canvas canvas) {
+ // Hier den Code zum Zeichnen einfügen
+ }
+Das Event enthält als Parameter eine Referenz auf ein Canvas-Objekt. Dieses kann z.B. dafür
+verwendet werden, einen Pfad zu zeichnen:
+canvas.drawPath(path, paint);
+Für das Zeichnen des Pfades verwenden wir die Klasse Path. Ein Pfad lässt sich mit moveTo
+und lineTo zeichnen:
+Um eine Linie zu zeichnen wird der Cursor zuerst auf eine bestimmte Position ax, ay gesetzt:
+path.moveTo(ax, ay);
+die Linie wird dann mit der Anweisung lineTo zu dem Punkt ex, ey gezogen:
+path.lineTo(ex, ey);
+Zum Zeichnen kann dann das OnTouch-Event verwendet werden.
+public boolean onTouchEvent(MotionEvent event)
+Das MotionEvent-Objekt liefert mit event.getX() und event.getY() die Koordinaten, zum
+anderen mit event.getAction() einen Wert, aus dem hervorgeht ob der Benutzer die Fläche
+berührt, eine Linie zieht oder die Berührung beendet. Mit einem switch-case Block kann
+daraus ein kleines Zeichenprogramm erstellt werden:
+switch (event.getAction()) {
+ case MotionEvent.ACTION_DOWN:
+ path.moveTo(eventX, eventY);
+ return true;
+ case MotionEvent.ACTION_MOVE:
+ path.lineTo(eventX, eventY);
+ break;
+ case MotionEvent.ACTION_UP:
+ // nothing to do
+ break;
+ default:
+ return false;
+ }
+Neben dem Path-Objekt wird noch ein Objekt der Klasse Paint benötigt. Dieses enthält Stilund Farbinformationen des Pfades.
+Bei niedrigen Auflösungen hinterlassen Kanten, wenn sie nicht gerade parallel zu einer der
+beiden Achsen verlaufen, einen „pixeligen“ Rand. Mit der Anweisung setAntiAlias können
+diese geglättet werden:
+paint.setAntiAlias(true);
+Nachfolgende Anweisungen sind selbserklärend. Hier werden die die Eigenschaften der
+Linien, wie Breite und Farbe gesetzt:
+paint.setStrokeWidth(6f);
+paint.setColor(Color.BLACK);
+paint.setStyle(Paint.Style.STROKE);
+paint.setStrokeJoin(Paint.Join.ROUND);
+Nachfolgend der gesamte Inhalt der Klasse SingleTouchEventView (Quelle:
+http://www.vogella.com/tutorials/AndroidTouch/article.html):
+package com.example.steppat.wanderkartennavi;
+import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.util.AttributeSet;
+import android.view.MotionEvent;
+import android.view.View;
+public class SingleTouchEventView extends View {
+ private Paint paint = new Paint();
+ private Path path = new Path();
+ public SingleTouchEventView(Context context, AttributeSet attrs) {
+ super(context, attrs);
+ paint.setAntiAlias(true);
+ paint.setStrokeWidth(6f);
+ paint.setColor(Color.BLACK);
+ paint.setStyle(Paint.Style.STROKE);
+ paint.setStrokeJoin(Paint.Join.ROUND);
+ }
+ @Override
+ protected void onDraw(Canvas canvas) {
+ canvas.drawPath(path, paint);
+ }
+ @Override
+ public boolean onTouchEvent(MotionEvent event) {
+ float eventX = event.getX();
+ float eventY = event.getY();
+ switch (event.getAction()) {
+ case MotionEvent.ACTION_DOWN:
+ path.moveTo(eventX, eventY);
+ return true;
+ case MotionEvent.ACTION_MOVE:
+ path.lineTo(eventX, eventY);
+ break;
+ case MotionEvent.ACTION_UP:
+ // nothing to do
+ break;
+ default:
+ return false;
+ }
+ // Schedules a repaint.
+ invalidate();
+ return true;
+ }
+Bei jedem onTouchEvent mit einer Bewegung auf dem Display wird eine neue Linie
+gezeichnet. Hierzu wird die Methode invalidate() aufgerufen.
+Die View wird mit der Methode setContentView geladen. Hier kann auch gleichzeitig die
+Instanziierung erfolgen:
+setContentView(new SingleTouchEventView(this, null));
+Anzeigen von Listen auf etwas komfortabelere Weise
+Im ersten Teil hatten wir die Anzeige von Listen mit Hilfe von TextViews erstellt. Diese
+ermöglicht auf einfache Weise die Interaktion des Benutzers mit dem System. Noch einfacher
+geht es mit ListView-Widgets. Diese haben zudem noch den Vorteil, dass man den einzelnen
+Elementen neben Text auch Bilder und andere Steuerelemente zuweisen kann.
+Ein ListView-Element lässt sich z.B. folgendermaßen in eine View einbinden:
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+ android:orientation="vertical" android:layout_width="match_parent"
+ android:layout_height="match_parent">
+ <ListView
+ android:layout_width="match_parent"
+ android:layout_height="wrap_content"
+ android:id="@+id/listView" />
+</LinearLayout>
+Im onCreate-Event der Ansicht wird zunächst eine Liste mit den Elementen, im vorliegenden
+Fall sind es Strings angelegt. Als nächster Schritt wird hierfür ein ListAdapter erzeugt,
+welcher die Elemente verwaltet. Der Adapter wird der ListView zugeordnet. Für die ListView
+wird ein Listener registriert.
+@Override
+ protected void onCreate(Bundle savedInstanceState) {
+ super.onCreate(savedInstanceState);
+ setContentView(R.layout.activity_alternative);
+
+ String[] values = new String[] { "Option 1", "Option 2", "Option 3", "Option 4" };
+ final ArrayList<String> list = new ArrayList<String>();
+ for (int i = 0; i < values.length; ++i) {
+ list.add(values[i]);
+ }
+ ListAdapter listAdapter = new ArrayAdapter<String>(getApplicationContext(),
+ android.R.layout.simple_list_item_1, list);
+ final ListView listView = (ListView)findViewById(R.id.listView);
+ listView.setAdapter(listAdapter);
+ listView.setOnItemClickListener(this);
+}
+Wird auf die ListView geklickt löst dies das onItemClick-Event aus. Mit Hilfe des
+AdapterView-Objekts kann der Inhalt des Elements ausgelesen werden:
+@Override
+ public void onItemClick(AdapterView<?> parent, View view, int position, long id ) {
+ Log.d("","Hello");
+ Log.d("", (String)parent.getItemAtPosition(position));
+ }
+Kurvendarstellungen in iOS
+Screenshot des MotionGraphics-Samples von Apple
+Die Methode drawLayer zeichnet die Kurven für der Messwerte. Zuerst wird der Hintergrund
+mit einer grauen Farbe gefüllt, anschließend in einer ausgelagerten Methode die Linien
+gezeichnet. Jede Kurve besteht aus 64 Punkten, die aus einem Array ausgelesen werden. Für
+die Punkte wird der Datentyp CGPoint verwendet.
+-(void)drawLayer:(CALayer*)l inContext:(CGContextRef)context
+{
+ // Fill in the background.
+ CGContextSetFillColorWithColor(context, graphBackgroundColor());
+ CGContextFillRect(context, self.layer.bounds);
+ // Draw the grid lines.
+ DrawGridlines(context, 0.0, 32.0);
+ // Draw the graph.
+ CGPoint lines[64];
+ int i;
+ // X
+ for (i = 0; i < 32; ++i)
+ {
+ lines[i*2].x = i;
+ lines[i*2].y = -xhistory[i] * 16.0;
+ lines[i*2+1].x = i + 1;
+ lines[i*2+1].y = -xhistory[i+1] * 16.0;
+ }
+ CGContextSetStrokeColorWithColor(context, graphXColor());
+ CGContextStrokeLineSegments(context, lines, 64);
+ // Y
+ for (i = 0; i < 32; ++i)
+ {
+ lines[i*2].y = -yhistory[i] * 16.0;
+ lines[i*2+1].y = -yhistory[i+1] * 16.0;
+ }
+ CGContextSetStrokeColorWithColor(context, graphYColor());
+ CGContextStrokeLineSegments(context, lines, 64);
+ // Z
+ for (i = 0; i < 32; ++i)
+ {
+ lines[i*2].y = -zhistory[i] * 16.0;
+ lines[i*2+1].y = -zhistory[i+1] * 16.0;
+ }
+ CGContextSetStrokeColorWithColor(context, graphZColor());
+ CGContextStrokeLineSegments(context, lines, 64);
+}
+Zum Zeichnen des Gitters wird die Methode DrawGridlines aufgerufen. In einer for-Schleife
+werden die einzelnen Gitterlinien gezeichnet. Dazu wird zuerst die Anweisung
+CGContextMoveToPoint aufgerufen, welche den Cursor auf den Punkt x, y setzt und dann die
+Anweisung CGContextAddLineToPoint zum Ziehen der Linie:
+void DrawGridlines(CGContextRef context, CGFloat x, CGFloat width)
+{
+ for (CGFloat y = -48.5; y <= 48.5; y += 16.0)
+ {
+ CGContextMoveToPoint(context, x, y);
+ CGContextAddLineToPoint(context, x + width, y);
+ }
+ CGContextSetStrokeColorWithColor(context, graphLineColor());
+ CGContextStrokePath(context);
+}
+Mit CGContextSetStrokeColorWithColor wird die Farbe der Linien gesetzt. Dazu wird die
+Hilfsmethode graphLineColor aufgerufen, welche ein CGColorRef-Objekt als Grauwert
+zurückgibt. Es handelt sich dabei um ein Singleton:
+CGColorRef graphLineColor()
+{
+ static CGColorRef c = NULL;
+ if (c == NULL)
+ {
+ c = CreateDeviceGrayColor(0.5, 1.0);
+ }
+ return c;
+}
+Auch RGB-Farben können erzeugt werden, z.B. für die Kurve des X-Kanals
+CGColorRef graphXColor()
+{
+ static CGColorRef c = NULL;
+ if (c == NULL)
+ {
+ c = CreateDeviceRGBColor(1.0, 0.0, 0.0, 1.0);
+ }
+ return c;
+}
