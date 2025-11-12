@@ -1,0 +1,73 @@
+/***********************************************************
+ *
+ * Umrechnung von GPS in UTM
+ *
+ ***********************************************************/
+
+
+Im Ordner uk befindet sich der Quellcode zur Umrechnung von GPS in UTM. 
+
+In der App ist folgendes Snippet hilfreich: 
+
+@Override
+        public void onLocationChanged(Location location) {
+            //Log.d("MainActivity", "onLocationChanged");
+            // Konvertierung von GPS in UTM
+            System.out.println("Convert Latitude/Longitude to UTM Reference");
+            com.example.gps_tracker.vorgeben.LatLng ll4 = new com.example.gps_tracker.vorgeben.LatLng(location.getLatitude(), location.getLongitude());
+            System.out.println("Latitude/Longitude: " + ll4.toString());
+            com.example.gps_tracker.UTMRef utm2 = ll4.toUTMRef();
+            System.out.println("Converted to UTM Ref: " + utm2.toString());
+            System.out.println();
+            // Ausgabe der Werte
+            //GPS:
+            TextView latLng = (TextView)findViewById(R.id.tvGPSValue);
+            latLng.setText(location.getLatitude() + " " + location.getLongitude());
+            //UTM:
+            TextView utm = (TextView)findViewById(R.id.tvUTMValue);
+            //utm.setText(utm2.toString());
+            utm.setText(
+                    String.format("%d", utm2.getLngZone()) +
+                            String.format("%c ", utm2.getLatZone()) +
+                            String.format("%.3f ", utm2.getEasting() / 1000.0 ) +
+                            String.format("%.3f", utm2.getNorthing() / 1000.0 )
+            );
+        }
+
+
+Unter https://gpso.de/maps/ kann man GPS in UTM umrechnen lassen und sieht das Ergebnis 
+auch gleich auf der Karte.
+
+
+
+/***********************************************************
+ *
+ * Darstellung von Routen
+ *
+ ***********************************************************/
+
+
+Folgender Code eignet sich zur Darstellung von Routen mit ImageView-Objekten:
+
+	ImageView imageView=(ImageView) findViewById(R.id.imageView);
+        Bitmap bitmap = Bitmap.createBitmap(100, 700, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(Color.BLACK);
+        //canvas.drawCircle(50, 50, 10, paint);
+        canvas.drawLine(25, 0, 25, 700, paint);
+        canvas.drawLine(50, 0, 50, 700, paint);
+        canvas.drawLine(75, 0, 75, 700, paint);
+        imageView.setImageBitmap(bitmap);
+
+Dazu wird ein ImageView-Widget im XML-Code der View ben�tigt, z.B.:
+
+<ImageView
+        android:id="@+id/imageView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:minHeight="700dp"
+        android:minWidth="100dp"
+        android:layout_marginLeft="30dp"
+        android:scrollIndicators="right" />
