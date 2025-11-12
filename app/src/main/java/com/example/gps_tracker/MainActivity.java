@@ -8,6 +8,7 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Button;
@@ -32,10 +33,8 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
     private GpsGraphView gpsGraphView;
     private Button startPauseButton, clearButton, showCsvButton;
     private TextView latitudeValue, longitudeValue, altitudeValue;
-
     private boolean tracking = false;
     private LocationManager locationManager;
-
     private AlertDialog csvDialog;
     private TextView csvDataTextView;
 
@@ -213,6 +212,12 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         super.onPause();
         if (tracking) {
             stopLocationUpdates();
+        }
+        try {
+            Log.d("CSV","Try write xml");
+            GPXConverter.convertAndDownloadGPXFromCSV(this);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 }
