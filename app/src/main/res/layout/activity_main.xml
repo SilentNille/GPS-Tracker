@@ -49,7 +49,8 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         tools:text="0.0"
-        app:layout_constraintStart_toStartOf="@id/latitudeValue"
+        android:layout_marginStart="8dp"
+        app:layout_constraintStart_toEndOf="@id/longitudeLabel"
         app:layout_constraintTop_toTopOf="@id/longitudeLabel"/>
 
     <TextView
@@ -66,10 +67,12 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         tools:text="0.0"
-        app:layout_constraintStart_toStartOf="@id/longitudeValue"
+        android:layout_marginStart="8dp"
+        app:layout_constraintStart_toEndOf="@id/altitudeLabel"
         app:layout_constraintTop_toTopOf="@id/altitudeLabel"/>
 
     <LinearLayout
+        style="?android:attr/buttonBarStyle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -82,21 +85,24 @@
 
         <Button
             android:id="@+id/startPauseButton"
+            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Start"/>
+            android:text="Start" />
 
         <Button
             android:id="@+id/clearButton"
+            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginStart="8dp"
-            android:text="Clear"/>
+            android:text="Clear" />
 
         <Button
             android:id="@+id/showCsvButton"
+            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
