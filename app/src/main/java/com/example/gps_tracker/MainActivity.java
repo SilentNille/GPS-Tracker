@@ -34,13 +34,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private Sensor pressureSensor;
     private LocationManager locationManager;
     private boolean stopCSVShedular = false;
+    private boolean isRunning = false;
     private Thread csvShedular = new Thread(() -> {
+        isRunning = true;
         while(true){
             String currentTime = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date());
             String csvLine = String.format(CSV_FORMAT, currentTime, currentLongitude, currentLatitude, currentAltitude);
 
             if(stopCSVShedular){
-                stopCSVShedular = false;
                 break;
             }
 
@@ -72,9 +73,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             try{
                 Thread.sleep(THREAD_SLEEP);
             } catch(InterruptedException e){
-                throw new RuntimeException(e);
+               e.printStackTrace();
             }
         }
+        isRunning = false;
     });
 
     private void clearCsv() {
@@ -141,11 +143,31 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     protected void onPause() {
         super.onPause();
         stopCSVShedular = true;
+        Log.d("CSV","Try to Stop the Shedular");
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        csvShedular.start();
+        while(isRunning && stopCSVShedular){
+            try {
+                Thread.sleep(100);
+                Log.d("CSV","Waiting for old Shedular Thread to finish before resuming");
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        };
+
+        if(!isRunning) {
+            stopCSVShedular = false;
+            csvShedular.start();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        stopCSVShedular = true;
+        clearCsv();
     }
 }
