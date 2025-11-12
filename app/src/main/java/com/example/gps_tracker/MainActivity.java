@@ -144,6 +144,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         super.onPause();
         stopCSVShedular = true;
         Log.d("CSV","Try to Stop the Shedular");
+        try {
+            Log.d("CSV","Try write xml");
+            GPXConverter.convertAndDownloadGPXFromCSV(this);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
