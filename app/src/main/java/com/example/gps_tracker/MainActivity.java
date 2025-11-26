@@ -12,7 +12,9 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -25,20 +27,21 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity implements LocationListener {
     private GpsGraphView gpsGraphView;
     private Button startPauseButton, clearButton, showCsvButton;
+    private ImageButton downloadGpxButton;
     private TextView latitudeValue, longitudeValue, altitudeValue;
+
     private boolean tracking = false;
     private LocationManager locationManager;
+
     private AlertDialog csvDialog;
     private TextView csvDataTextView;
 
-    private static final String CSV_HEADER = "time,latitude,longitude,altitude";
+    private static final String CSV_HEADER = "time,latitude,longitude,altitude\n";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,6 +52,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         startPauseButton = findViewById(R.id.startPauseButton);
         clearButton = findViewById(R.id.clearButton);
         showCsvButton = findViewById(R.id.showCsvButton);
+        downloadGpxButton = findViewById(R.id.downloadGpxButton);
         latitudeValue = findViewById(R.id.latitudeValue);
         longitudeValue = findViewById(R.id.longitudeValue);
         altitudeValue = findViewById(R.id.altitudeValue);
@@ -67,6 +71,17 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
 
         showCsvButton.setOnClickListener(v -> {
             showCsvDataDialog();
+        });
+
+        downloadGpxButton.setOnClickListener(v -> {
+            try {
+                Log.d("CSV","Try write xml");
+                GPXConverter.convertAndDownloadGPXFromCSV(this);
+                Toast.makeText(this, "GPX file downloaded.", Toast.LENGTH_SHORT).show();
+            } catch (IOException e) {
+                Toast.makeText(this, "Error downloading GPX file.", Toast.LENGTH_SHORT).show();
+                throw new RuntimeException(e);
+            }
         });
 
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
@@ -153,12 +168,12 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
     public void onLocationChanged(@NonNull Location location) {
         double latitude = location.getLatitude();
         double longitude = location.getLongitude();
-        latitudeValue.setText(String.format(Locale.getDefault(), "%.6f", latitude));
-        longitudeValue.setText(String.format(Locale.getDefault(), "%.6f", longitude));
+        latitudeValue.setText(String.format(Locale.US, "%.6f", latitude));
+        longitudeValue.setText(String.format(Locale.US, "%.6f", longitude));
 
         if (location.hasAltitude()) {
             double altitude = location.getAltitude();
-            altitudeValue.setText(String.format(Locale.getDefault(), "%.2f m", altitude));
+            altitudeValue.setText(String.format(Locale.US, "%.2f m", altitude));
         } else {
             altitudeValue.setText("N/A");
         }
@@ -166,8 +181,8 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         LatLng latLng = new LatLng(latitude, longitude);
         gpsGraphView.addPoint(latLng);
 
-        String currentTime = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
-        String csvLine = String.format(Locale.getDefault(), "%s,%.6f,%.6f,%.2f ", currentTime, latitude, longitude, location.getAltitude());
+        long time = location.getTime();
+        String csvLine = String.format(Locale.US, "%d,%.6f,%.6f,%.2f", time, latitude, longitude, location.getAltitude());
         writeToCsv(csvLine);
 
         if (csvDialog != null && csvDialog.isShowing()) {
@@ -178,10 +193,10 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
     private void writeToCsv(String line) {
         File file = new File(getFilesDir(), "gps_data.csv");
         try (FileWriter fw = new FileWriter(file, true)) {
-            if (!file.exists() || file.length() == 0) {
-                fw.write(CSV_HEADER);
+            if (file.length() == 0) {
+                fw.write(CSV_HEADER + System.lineSeparator());
             }
-            fw.write(line);
+            fw.write(line + System.lineSeparator());
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -212,12 +227,6 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         super.onPause();
         if (tracking) {
             stopLocationUpdates();
-        }
-        try {
-            Log.d("CSV","Try write xml");
-            GPXConverter.convertAndDownloadGPXFromCSV(this);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
         }
     }
 }
