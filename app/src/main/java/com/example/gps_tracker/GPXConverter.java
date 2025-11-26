@@ -97,7 +97,8 @@ public class GPXConverter {
 
     private static void saveGpxFile(Context context, String gpxContent) throws IOException {
         ContentValues values = new ContentValues();
-        values.put(MediaStore.MediaColumns.DISPLAY_NAME, "track.gpx");
+        String formattedDate = new SimpleDateFormat("yyyy-MM-dd'T'HH-mm-ss", Locale.US).format(new Date());
+        values.put(MediaStore.MediaColumns.DISPLAY_NAME, "track-" + formattedDate + ".gpx");
         values.put(MediaStore.MediaColumns.MIME_TYPE, "application/gpx+xml");
         values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
 

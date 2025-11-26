@@ -4,6 +4,10 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -27,9 +31,11 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
-public class MainActivity extends AppCompatActivity implements LocationListener {
+public class MainActivity extends AppCompatActivity implements LocationListener, SensorEventListener {
     private GpsGraphView gpsGraphView;
     private Button startPauseButton, clearButton, showCsvButton;
     private ImageButton downloadGpxButton;
@@ -38,10 +44,16 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
     private boolean tracking = false;
     private LocationManager locationManager;
 
+    private SensorManager sensorManager;
+    private final float[] accelerometerReading = new float[3];
+    private final float[] magnetometerReading = new float[3];
+    private final float[] rotationMatrix = new float[9];
+    private final float[] orientationAngles = new float[3];
+
     private AlertDialog csvDialog;
     private TextView csvDataTextView;
 
-    private static final String CSV_HEADER = "time,latitude,longitude,altitude\n";
+    private static final String CSV_HEADER = "time,latitude,longitude,altitude";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,6 +68,8 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         latitudeValue = findViewById(R.id.latitudeValue);
         longitudeValue = findViewById(R.id.longitudeValue);
         altitudeValue = findViewById(R.id.altitudeValue);
+
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
 
         startPauseButton.setOnClickListener(v -> {
             if (tracking) {
@@ -75,18 +89,51 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
 
         downloadGpxButton.setOnClickListener(v -> {
             try {
-                Log.d("CSV","Try write xml");
+                Log.d("CSV", "Try write xml");
                 GPXConverter.convertAndDownloadGPXFromCSV(this);
                 Toast.makeText(this, "GPX file downloaded.", Toast.LENGTH_SHORT).show();
             } catch (IOException e) {
                 Toast.makeText(this, "Error downloading GPX file.", Toast.LENGTH_SHORT).show();
-                throw new RuntimeException(e);
+                Log.e("GPX_DOWNLOAD", "Error downloading GPX", e);
             }
         });
 
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+        }
+
+        loadPreviousTrack();
+    }
+
+    private void loadPreviousTrack() {
+        File file = new File(getFilesDir(), "gps_data.csv");
+        if (!file.exists()) {
+            return;
+        }
+
+        List<LatLng> points = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            reader.readLine();
+            while ((line = reader.readLine()) != null) {
+                String[] values = line.split(",");
+                if (values.length >= 3) {
+                    try {
+                        double lat = Double.parseDouble(values[1]);
+                        double lng = Double.parseDouble(values[2]);
+                        points.add(new LatLng(lat, lng));
+                    } catch (NumberFormatException e) {
+                        Log.e("CSV_PARSE", "Could not parse line: " + line, e);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            Log.e("CSV_READ", "Error reading previous track data", e);
+        }
+
+        if (!points.isEmpty()) {
+            gpsGraphView.setPoints(points);
         }
     }
 
@@ -106,7 +153,9 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         gpsGraphView.clearTrack();
         File file = new File(getFilesDir(), "gps_data.csv");
         if (file.exists()) {
-            file.delete();
+            if(file.delete()) {
+                Toast.makeText(this, "Track data cleared.", Toast.LENGTH_SHORT).show();
+            }
         }
         if (csvDialog != null && csvDialog.isShowing()) {
             csvDataTextView.setText("No CSV data found.");
@@ -149,7 +198,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
             csvData.append("No CSV data found.");
         }
 
-        if(csvDataTextView != null) {
+        if (csvDataTextView != null) {
             csvDataTextView.setText(csvData.toString());
         }
     }
@@ -220,6 +269,14 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         if (tracking) {
             startLocationUpdates();
         }
+        Sensor accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        if (accelerometer != null) {
+            sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
+        }
+        Sensor magneticField = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        if (magneticField != null) {
+            sensorManager.registerListener(this, magneticField, SensorManager.SENSOR_DELAY_UI);
+        }
     }
 
     @Override
@@ -228,5 +285,30 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         if (tracking) {
             stopLocationUpdates();
         }
+        sensorManager.unregisterListener(this);
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            System.arraycopy(event.values, 0, accelerometerReading, 0, accelerometerReading.length);
+        } else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
+            System.arraycopy(event.values, 0, magnetometerReading, 0, magnetometerReading.length);
+        }
+        updateOrientationAngles();
+    }
+
+    private void updateOrientationAngles() {
+        SensorManager.getRotationMatrix(rotationMatrix, null, accelerometerReading, magnetometerReading);
+        SensorManager.getOrientation(rotationMatrix, orientationAngles);
+
+        float azimuthInRadians = orientationAngles[0];
+        float azimuthInDegrees = (float) Math.toDegrees(azimuthInRadians);
+
+        gpsGraphView.updatePhoneBearing(azimuthInDegrees);
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
     }
 }
